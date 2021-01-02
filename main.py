@@ -29,7 +29,12 @@ def calc_dice(y_pred, y_true):
     recall = tp / (tp + fn + epsilon)
     
     f1 = 2* (precision*recall) / (precision + recall + epsilon)
-    return float(f1.cpu().numpy())
+
+    precision = float(precision.cpu().numpy())
+    recall = float(recall.cpu().numpy())
+    f1 = float(f1.cpu().numpy())
+
+    return precision, recall, f1
 
 def calculate_accuracy(y_pred, y_true):
     predicted = y_pred.ge(.5).view(-1)
@@ -87,9 +92,13 @@ def train(args, x_train, y_train, x_valid, y_valid):
 
     result = {}
     result['train/BCE'] = []
+    result['train/Precision'] = []
+    result['train/Recall'] = []
     result['train/Dice'] = []
     result['train/Accuracy'] = []
     result['valid/BCE'] = []
+    result['valid/Precision'] = []
+    result['valid/Recall'] = []
     result['valid/Dice'] = []
     result['valid/Accuracy'] = []
 
@@ -97,6 +106,8 @@ def train(args, x_train, y_train, x_valid, y_valid):
         print('train step: epoch {}'.format(str(epoch+1).zfill(4)))
 
         train_bce = []
+        train_pre = []
+        train_rec = []
         train_dice = []
         train_acc = []
 
@@ -107,10 +118,12 @@ def train(args, x_train, y_train, x_valid, y_valid):
             pred = model(inp_data)
 
             bce = bce_loss(pred, lab_data)
-            dice = calc_dice(pred, lab_data)
+            pre, rec, dice = calc_dice(pred, lab_data)
             acc = calculate_accuracy(pred, lab_data)
 
             train_bce.append(bce.item())
+            train_pre.append(pre)
+            train_rec.append(rec)
             train_dice.append(dice)
             train_acc.append(acc)
 
@@ -119,14 +132,18 @@ def train(args, x_train, y_train, x_valid, y_valid):
             optimizer.step()
         
         result['train/BCE'].append(statistics.mean(train_bce))
+        result['train/Precision'].append(statistics.mean(train_pre))
+        result['train/Recall'].append(statistics.mean(train_rec))
         result['train/Dice'].append(statistics.mean(train_dice))
         result['train/Accuracy'].append(statistics.mean(train_acc))
 
         writer.add_scalar('train/BinaryCrossEntropy', result['train/BCE'][-1], epoch+1)
+        writer.add_scalar('train/Precision', result['train/Precision'][-1], epoch+1)
+        writer.add_scalar('train/Recall', result['train/Recall'][-1], epoch+1)
         writer.add_scalar('train/DiceScore', result['train/Dice'][-1], epoch+1)
         writer.add_scalar('train/Accuracy', result['train/Accuracy'][-1], epoch+1)
 
-        print('BCE: {}, Dice: {}, Accuracy: {}'.format(result['train/BCE'][-1], result['train/Dice'][-1], result['train/Accuracy'][-1]))
+        print('BCE: {}, Precision: {}, Recall: {}, Dice: {}, Accuracy: {}'.format(result['train/BCE'][-1], result['train/Precision'][-1], result['train/Recall'][-1], result['train/Dice'][-1], result['train/Accuracy'][-1]))
 
         if (epoch+1) % 10 == 0 or (epoch+1) == 1:
 
@@ -135,6 +152,8 @@ def train(args, x_train, y_train, x_valid, y_valid):
                 model.eval()
 
                 valid_bce = []
+                valid_pre = []
+                valid_rec = []
                 valid_dice = []
                 valid_acc = []
                 for inp_data, lab_data in tqdm(valid_dataloader):
@@ -144,23 +163,29 @@ def train(args, x_train, y_train, x_valid, y_valid):
                     pred = model(inp_data)
 
                     bce = bce_loss(pred, lab_data)
-                    dice = calc_dice(pred, lab_data)
+                    pre, rec, dice = calc_dice(pred, lab_data)
                     acc = calculate_accuracy(pred, lab_data)
 
                     valid_bce.append(bce.item())
+                    valid_pre.append(pre)
+                    valid_rec.append(rec)
                     valid_dice.append(dice)
                     valid_acc.append(acc)
                 
                 result['valid/BCE'].append(statistics.mean(valid_bce))
+                result['valid/Precision'].append(statistics.mean(valid_pre))
+                result['valid/Recall'].append(statistics.mean(valid_rec))
                 result['valid/Dice'].append(statistics.mean(valid_dice))
                 result['valid/Accuracy'].append(statistics.mean(valid_acc))
 
                 writer.add_scalar('valid/BinaryCrossEntropy', result['valid/BCE'][-1], epoch+1)
+                writer.add_scalar('valid/Precision', result['valid/Precision'][-1], epoch+1)
+                writer.add_scalar('valid/Recall', result['valid/Recall'][-1], epoch+1)
                 writer.add_scalar('valid/DiceScore', result['valid/Dice'][-1], epoch+1)
                 writer.add_scalar('valid/Accuracy', result['valid/Accuracy'][-1], epoch+1)
 
 
-                print('BCE: {}, Dice: {}, Accuracy: {}'.format(result['valid/BCE'][-1], result['valid/Dice'][-1], result['valid/Accuracy'][-1]))
+                print('BCE: {}, Precision: {}, Recall: {}, Dice: {}, Accuracy: {}'.format(result['valid/BCE'][-1], result['valid/Precision'][-1], result['valid/Recall'][-1], result['valid/Dice'][-1], result['valid/Accuracy'][-1]))
 
 
                 if best_dice < result['valid/Dice'][-1]:
