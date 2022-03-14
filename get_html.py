@@ -30,7 +30,7 @@ Base = 'https://db.netkeiba.com/race/'
 
 place = ['札幌', '函館' , '福島', '新潟', '東京', '中山', '中京', '京都', '阪神', '小倉']
 
-for year in range(2015, 2021):
+for year in range(2022, 2023):
     print(year)
     for i in range(1, 11):
         print(place[i-1])

@@ -13,8 +13,8 @@ class Scraping:
     def __init__(self, 
         load_dir='./objects/',
         save_dir='./data/',
-        start_year=2001,
-        end_year=2020,
+        start_year=2018,
+        end_year=2022,
         ):
 
         self.load_dir = load_dir

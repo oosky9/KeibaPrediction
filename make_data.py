@@ -67,6 +67,8 @@ def str2num(key, data):
         return sex2num(data)
     elif key == '着順':
         return rank2label(data)
+    elif key == '馬名' or key == '騎手':
+        return data.strip().replace(' ', '').replace('　', '')
     else:
         try:
             return float(data) 
@@ -80,10 +82,10 @@ def main():
 
     data_dict = pd.read_csv(data_path)
 
-    keys = ['年', '競馬場コード', '開催回数', '日数', 'レース数', 'コース距離', 'コースタイプ', '天気', '馬場状態', '頭数',	'着順',	'枠', '馬番', '性', '年齢', '斤量', '人気', '単勝オッズ', '馬体重', '増減']
+    keys = ['年', '競馬場コード', '開催回数', '日数', 'レース数', 'コース距離', 'コースタイプ', '天気', '馬場状態', '頭数',	'着順',	'枠', '馬番', '性', '年齢', '斤量', '人気', '単勝オッズ', '馬体重', '増減', '馬名', '騎手']
 
 
-    new_columns = ['year', 'code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'answer', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']
+    new_columns = ['year', 'code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'answer', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown', 'name', 'jockey']
     print(len(keys))
     print(len(new_columns))
     assert len(keys) == len(new_columns)
@@ -97,9 +99,9 @@ def main():
         
     df = pd.DataFrame(new_list, columns=new_columns)
 
-    df_for_train = df.query('year < 2019')
-    df_for_valid = df.query('year == 2019')
-    df_for_test  = df.query('year == 2020')
+    df_for_train = df.query('year < 2021')
+    df_for_valid = df.query('year == 2021')
+    df_for_test  = df.query('year == 2022')
 
     df_for_train.to_csv('./data/train.csv')
     df_for_valid.to_csv('./data/valid.csv')

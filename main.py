@@ -1,3 +1,4 @@
+from json import load
 import numpy as np
 import pandas as pd
 
@@ -12,7 +13,7 @@ import statistics
 import argparse
 from tqdm import tqdm
 
-from model import NeuralNetwork, MyDataset
+from model import NNwithLSTM, NeuralNetwork, MyDataset
 
 def calc_dice(y_pred, y_true):
     y_pred = y_pred.ge(.5).view(-1).to(torch.float32)
@@ -70,22 +71,38 @@ def load_data(data, label):
 
     return dataset
 
+def load_data_with_word(data, label, dict):
 
-def train(args, x_train, y_train, x_valid, y_valid):
+    x = np.asarray(data[0])
+    label  = np.asarray(label)
+
+    x = np.nan_to_num(x)
+    label = np.nan_to_num(label)
+
+    x = norm_max_min(x)
+
+    x0 = torch.tensor(x, dtype=torch.float32)
+    label = torch.tensor(label, dtype=torch.float32)
+
+    x1 = torch.tensor([dict[0][key] for key in data[1]['name']], dtype=torch.long)
+    x2 = torch.tensor([dict[1][key] for key in data[1]['jockey']], dtype=torch.long)
+
+    xs = torch.stack([x1, x2], 1)
+    dataset = MyDataset(x0, label, wdata=xs)
+
+    return dataset
+
+
+def train(args, model, train_data, valid_data):
 
     writer = SummaryWriter()
 
     best_dice = 0 
 
-    model = NeuralNetwork(in_ch=x_train.shape[1], n_hidden=args.n_hidden)
-    model.to(args.device)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     bce_loss = torch.nn.BCELoss()
-
-    train_data = load_data(x_train, y_train)
-    valid_data = load_data(x_valid, y_valid)
+        
 
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
     valid_dataloader = torch.utils.data.DataLoader(valid_data, batch_size=args.batch_size, shuffle=False)
@@ -111,12 +128,20 @@ def train(args, x_train, y_train, x_valid, y_valid):
         train_dice = []
         train_acc = []
 
-        for inp_data, lab_data in tqdm(train_dataloader):
-            inp_data = inp_data.to(args.device)
-            lab_data = lab_data.to(args.device)
+        model.train()
+        for data in tqdm(train_dataloader):
+            
+            if args.isNLP:
+                inp_data = data[0].to(args.device)
+                wd_data = data[1].to(args.device)
+                lab_data = data[2].to(args.device)
+                pred = model(inp_data, wd_data[:, 0], wd_data[:, 1]).squeeze()
 
-            pred = model(inp_data)
-
+            else:
+                inp_data = data[0].to(args.device)
+                lab_data = data[1].to(args.device)
+                pred = model(inp_data).squeeze()
+           
             bce = bce_loss(pred, lab_data)
             pre, rec, dice = calc_dice(pred, lab_data)
             acc = calculate_accuracy(pred, lab_data)
@@ -156,11 +181,17 @@ def train(args, x_train, y_train, x_valid, y_valid):
                 valid_rec = []
                 valid_dice = []
                 valid_acc = []
-                for inp_data, lab_data in tqdm(valid_dataloader):
-                    inp_data = inp_data.to(args.device)
-                    lab_data = lab_data.to(args.device)
+                for data in tqdm(valid_dataloader):
 
-                    pred = model(inp_data)
+                    if args.isNLP:
+                        inp_data = data[0].to(args.device)
+                        wd_data = data[1].to(args.device)
+                        lab_data = data[2].to(args.device)
+                        pred = model(inp_data, wd_data[:, 0], wd_data[:, 1]).squeeze()
+                    else:
+                        inp_data = data[0].to(args.device)
+                        lab_data = data[1].to(args.device)
+                        pred = model(inp_data).squeeze()
 
                     bce = bce_loss(pred, lab_data)
                     pre, rec, dice = calc_dice(pred, lab_data)
@@ -196,6 +227,16 @@ def train(args, x_train, y_train, x_valid, y_valid):
                     torch.save(model.state_dict(), best_model_name)
 
 
+def load_dict_list(path):
+    import json
+
+    dicts = []
+    for p in path:
+        with open(p, mode='r') as f:
+            data = json.load(f)
+        dicts.append(data)
+    return dicts
+
 def check_dir(p):
     if not os.path.isdir(p):
         os.makedirs(p)
@@ -208,6 +249,10 @@ def arg_parser():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--batch_size', type=int, default=1024)
     parser.add_argument('--n_hidden', type=int, default=200)
+    parser.add_argument('--isNLP', type=bool, default=True)
+    parser.add_argument('--emb_size', type=int, default=10)
+    parser.add_argument('--lstm_hidden', type=int, default=128)
+    parser.add_argument('--lstm_out', type=int, default=2)
 
     args = parser.parse_args()
     return args
@@ -219,15 +264,48 @@ def main(args):
     df_train = pd.read_csv('./data/train.csv')
     df_valid = pd.read_csv('./data/valid.csv')
 
-    x_train = df_train[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']]
-    
-    x_valid = df_valid[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']]
-
     y_train = df_train['answer']
     y_valid = df_valid['answer']
 
+    if args.isNLP:
 
-    train(args, x_train, y_train, x_valid, y_valid)
+        dict_list = load_dict_list([
+            './data/name_dict.json', 
+            './data/jockey_dict.json'
+        ])
+
+        x_train = []
+        x_valid = []
+        x_train.append(df_train[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']])
+        x_train.append(df_train[['name', 'jockey']])
+        x_valid.append(df_valid[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']])
+        x_valid.append(df_valid[['name', 'jockey']])  
+
+        train_data = load_data_with_word(x_train, y_train, dict_list)
+        valid_data = load_data_with_word(x_valid, y_valid, dict_list)  
+
+        model = NNwithLSTM(
+            in_ch=x_train[0].shape[1], 
+            n_hidden=args.n_hidden,
+            emb_size=args.emb_size,
+            w1_len=len(dict_list[0]),
+            w2_len=len(dict_list[1]),
+            lstm_hidden=args.lstm_hidden,
+            lstm_out_size=args.lstm_out
+        )
+        model.to(args.device)   
+
+    else:
+        x_train = df_train[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']]
+        x_valid = df_valid[['code', 'num', 'day', 'race', 'distance', 'type', 'weather', 'state', 'hourses', 'waku', 'no', 'sex', 'age', 'weight', 'popularity', 'odds', 'hweight', 'updown']]
+        
+        train_data = load_data(x_train, y_train)
+        valid_data = load_data(x_valid, y_valid)
+
+        model = NeuralNetwork(in_ch=x_train.shape[1], n_hidden=args.n_hidden)
+        model.to(args.device)
+
+    train(args, model, train_data, valid_data)
 
 
 if __name__ == '__main__':
